@@ -98,7 +98,7 @@ foreach(BACKEND ${WASMEDGE_PLUGIN_WASI_NN_BACKEND})
       SHA256=ccd28e02c334fbcfc94a86c8f86f1d7dbb5bffc844af9f22243a1f9f7840db1b
     )
     file(
-      COPY ${CMAKE_CURRENT_BINARY_DIR}/install/espeak-ng-data
+      COPY ${CMAKE_SOURCE_DIR}/install/espeak-ng-data
       DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/wasinn_piper_fixtures
     )
   elseif(BACKEND STREQUAL "whisper")
