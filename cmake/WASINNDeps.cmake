@@ -425,10 +425,9 @@ function(wasmedge_setup_piper_target target)
     if (DEFINED PIPER_ROOT)
         message(STATUS "Build: Using pre-built Piper from ${PIPER_ROOT}")
         add_library(piper STATIC IMPORTED)
-      
-        find_library(PIPER_LIB_PATH 
-            NAMES piper libpiper 
-            PATHS "${PIPER_ROOT}/lib" 
+      find_library(PIPER_LIB_PATH
+          NAMES piper libpiper
+          PATHS "${PIPER_ROOT}/lib"
             NO_DEFAULT_PATH
             REQUIRED
         )

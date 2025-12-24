@@ -77,7 +77,6 @@ jobs:
             cmake --install build-deps
 
             PIPER_INSTALL_PATH="$PWD/install"
-            
             echo "--- Debug: Verify Install ---"
             ls -R "$PIPER_INSTALL_PATH"
             cd ../..
