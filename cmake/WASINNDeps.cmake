@@ -456,6 +456,7 @@ function(wasmedge_setup_piper_target target)
     message(STATUS "Downloading piper source -- done")
     # suppress src/cpp/piper.cpp:302:29: error: unused parameter ‘config’ [-Werror=unused-parameter]
     target_compile_options(piper PRIVATE -Wno-error=unused-parameter)
+    endif()
   endif()
   wasmedge_setup_simdjson()
   target_link_libraries(${target}
