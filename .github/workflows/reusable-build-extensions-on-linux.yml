@@ -67,19 +67,32 @@ jobs:
         shell: bash
         run: |
           [ "${{ matrix.plugin }}" == "wasi_nn-openvino-genai" ] && source /root/openvino_genai/setupvars.sh
+          # Initialize variable
+          PIPER_INSTALL_PATH=""
+
           if [[ "${{ matrix.plugin }}" == "wasi_nn-piper" ]]; then
-            echo "--- DEBUG: Starting build for wasi_nn-piper ---"
-            echo "Installing to prefix: $PWD/install"
+            echo "--- Building Piper Static Library ---"
+            git clone https://github.com/OHF-Voice/piper1-gpl piper-source
+            cd piper-source/libpiper
             
-            cmake -Bbuild-deps -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$PWD/install
+            cmake -Bbuild-deps \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_PREFIX="$PWD/install" \
+              -DBUILD_SHARED_LIBS=OFF \
+              -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+            
             cmake --build build-deps
             cmake --install build-deps
+          
+            PIPER_INSTALL_PATH="$PWD/install"
             
-            echo "--- DEBUG: Installation complete. Checking contents of install folder: ---"
-            ls -R $PWD/install
+            echo "--- Debug: Verify Static Lib exists ---"
+            ls -R "$PIPER_INSTALL_PATH"
+            cd ../.. 
           fi
           cmake -Bbuild -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DPIPER_ROOT="$PIPER_INSTALL_PATH" \
             -DWASMEDGE_BUILD_TESTS=${{ inputs.release && 'OFF' || 'ON' }} \
             -DWASMEDGE_BUILD_TOOLS=OFF \
             -DWASMEDGE_USE_LLVM=OFF \

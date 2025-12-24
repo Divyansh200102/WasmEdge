@@ -97,10 +97,24 @@ foreach(BACKEND ${WASMEDGE_PLUGIN_WASI_NN_BACKEND})
       ${CMAKE_CURRENT_BINARY_DIR}/wasinn_piper_fixtures/test_voice.onnx.json
       SHA256=ccd28e02c334fbcfc94a86c8f86f1d7dbb5bffc844af9f22243a1f9f7840db1b
     )
-    file(
-      COPY ${CMAKE_SOURCE_DIR}/install/espeak-ng-data
-      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/wasinn_piper_fixtures
-    )
+   set(ESPEAK_SOURCE_DIR "")
+
+    if (DEFINED PIPER_ROOT)
+        # CI Mode: Path updated based on your screenshot (no 'share' folder)
+        set(ESPEAK_SOURCE_DIR "${PIPER_ROOT}/espeak-ng-data")
+    # CMAKE_BINARY_DIR always points to the current build folder (e.g., build, build-debug)
+    elseif(EXISTS "${CMAKE_BINARY_DIR}/_deps/piper-src/install/espeak-ng-data")
+        set(ESPEAK_SOURCE_DIR "${CMAKE_BINARY_DIR}/_deps/piper-src/install/espeak-ng-data")
+    endif()
+
+    if (EXISTS "${ESPEAK_SOURCE_DIR}")
+        file(
+          COPY ${ESPEAK_SOURCE_DIR}
+          DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/wasinn_piper_fixtures
+        )
+    else()
+        message(WARNING "Could not find espeak-ng-data at ${ESPEAK_SOURCE_DIR}")
+    endif()
   elseif(BACKEND STREQUAL "whisper")
     message( STATUS "Download ML artifacts to ${CMAKE_CURRENT_BINARY_DIR}/wasinn_whisper_fixtures")
     download(
