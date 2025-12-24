@@ -68,9 +68,15 @@ jobs:
         run: |
           [ "${{ matrix.plugin }}" == "wasi_nn-openvino-genai" ] && source /root/openvino_genai/setupvars.sh
           if [[ "${{ matrix.plugin }}" == "wasi_nn-piper" ]]; then
+            echo "--- DEBUG: Starting build for wasi_nn-piper ---"
+            echo "Installing to prefix: $PWD/install"
+            
             cmake -Bbuild-deps -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$PWD/install
             cmake --build build-deps
             cmake --install build-deps
+            
+            echo "--- DEBUG: Installation complete. Checking contents of install folder: ---"
+            ls -R $PWD/install
           fi
           cmake -Bbuild -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
