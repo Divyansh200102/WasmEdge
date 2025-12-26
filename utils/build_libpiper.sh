@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "--- Building Piper Static Library ---"
+echo "--- Build and install libpiper ---"
 # Remove existing directory if it exists to ensure a clean build
 rm -rf piper-source
 
@@ -16,6 +16,3 @@ cmake -Bbuild-deps \
 
 cmake --build build-deps
 cmake --install build-deps
-
-echo "--- Verify install ---"
-ls -R "$PWD/install"
