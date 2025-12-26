@@ -427,7 +427,7 @@ function(wasmedge_setup_piper_target target)
       add_library(piper STATIC IMPORTED)
       find_library(PIPER_LIB_PATH
           NAMES piper libpiper
-          PATHS "${PIPER_ROOT}/lib"
+          PATHS "${PIPER_ROOT}/lib" "${PIPER_ROOT}/lib64"
             NO_DEFAULT_PATH
             REQUIRED
         )
