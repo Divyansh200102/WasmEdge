@@ -449,10 +449,8 @@ function(wasmedge_setup_piper_target target)
       set(BUILD_SHARED_LIBS OFF CACHE INTERNAL "Piper not build shared")
       set(BUILD_TESTING OFF CACHE INTERNAL "Piper not build tests")
       set(CMAKE_POSITION_INDEPENDENT_CODE ON CACHE INTERNAL "Piper build independent code")
-      
       FetchContent_MakeAvailable(piper)
       message(STATUS "Downloading piper source -- done")
-      
       # suppress src/cpp/piper.cpp:302:29: error: unused parameter ‘config’ [-Werror=unused-parameter]
       target_compile_options(piper PRIVATE -Wno-error=unused-parameter)
     endif()
