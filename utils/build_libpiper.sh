@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "--- Build and install libpiper ---"
+echo "::group::Build and install libpiper"
 # Remove existing directory if it exists to ensure a clean build
 rm -rf piper-source
 
@@ -16,3 +16,4 @@ cmake -Bbuild-deps \
 
 cmake --build build-deps
 cmake --install build-deps
+echo "::endgroup::"
