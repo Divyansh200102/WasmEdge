@@ -455,7 +455,6 @@ function(wasmedge_setup_piper_target target)
       target_compile_options(piper PRIVATE -Wno-error=unused-parameter)
     endif()
   endif()
-
   wasmedge_setup_simdjson()
   target_link_libraries(${target}
     PRIVATE
