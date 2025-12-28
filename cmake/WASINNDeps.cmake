@@ -418,8 +418,8 @@ function(wasmedge_setup_piper_target target)
     endif()
   endif()
   if(NOT onnxruntime_FOUND)
-      message(FATAL_ERROR "Cannot find onnxruntime")
-    endif()
+    message(FATAL_ERROR "Cannot find onnxruntime")
+  endif()
 
   if(NOT TARGET piper)
     # setup piper
