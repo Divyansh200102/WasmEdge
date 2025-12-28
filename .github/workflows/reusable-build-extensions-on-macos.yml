@@ -61,7 +61,6 @@ jobs:
           export OpenSSL_DIR="$(brew --prefix)/opt/openssl"
           export CC=clang
           export CXX=clang++
-          
           PIPER_INSTALL_PATH=""
           if [[ "${{ matrix.plugin }}" == "wasi_nn-piper" ]]; then
             chmod +x utils/build_libpiper.sh
