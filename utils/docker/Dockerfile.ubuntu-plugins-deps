@@ -47,6 +47,14 @@ FROM deps-${UBUNTU_VER} AS deps-all
 
 WORKDIR /root
 
+ARG CMAKE_VERSION=3.29.3
+RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certificates \
+    && wget https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.sh -q -O /tmp/cmake-install.sh \
+    && chmod +x /tmp/cmake-install.sh \
+    && /tmp/cmake-install.sh --skip-license --prefix=/usr/local \
+    && rm -f /tmp/cmake-install.sh \
+    && cmake --version
+
 COPY opencvmini/install-opencvmini.sh .
 ENV OPENCV_VERSION="4.8.0"
 RUN [ "/bin/bash", "install-opencvmini.sh" ]
