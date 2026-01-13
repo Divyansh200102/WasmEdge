@@ -407,30 +407,20 @@ endfunction()
 
 # Function of preparing piper dependency.
 function(wasmedge_setup_piper_target target)
-  if(DEFINED PIPER_ROOT)
-    find_library(ONNXRUNTIME_LIBRARY
-      NAMES onnxruntime
-      PATHS "${PIPER_ROOT}"
-      PATH_SUFFIXES "lib"
-      NO_DEFAULT_PATH
-    )
-    if("${ONNXRUNTIME_LIBRARY}" STREQUAL "ONNXRUNTIME_LIBRARY-NOTFOUND")
-       unset(ONNXRUNTIME_LIBRARY)
-    endif()
-  endif()
-  find_package(onnxruntime)
-  if(NOT onnxruntime_FOUND)
-    find_library(ONNXRUNTIME_LIBRARY onnxruntime)
-    if(NOT "${ONNXRUNTIME_LIBRARY}" STREQUAL "ONNXRUNTIME_LIBRARY-NOTFOUND")
-      find_path(ONNXRUNTIME_PATH "onnxruntime_cxx_api.h" PATH_SUFFIXES "onnxruntime")
-      if(NOT "${ONNXRUNTIME_PATH}" STREQUAL "ONNXRUNTIME_PATH-NOTFOUND")
-        set(onnxruntime_FOUND TRUE)
-      endif()
-    endif()
-  endif()
-  if(NOT onnxruntime_FOUND)
-    message(FATAL_ERROR "Cannot find onnxruntime")
-  endif()
+ 
+  # find_package(onnxruntime)
+  # if(NOT onnxruntime_FOUND)
+  #   find_library(ONNXRUNTIME_LIBRARY onnxruntime)
+  #   if(NOT "${ONNXRUNTIME_LIBRARY}" STREQUAL "ONNXRUNTIME_LIBRARY-NOTFOUND")
+  #     find_path(ONNXRUNTIME_PATH "onnxruntime_cxx_api.h" PATH_SUFFIXES "onnxruntime")
+  #     if(NOT "${ONNXRUNTIME_PATH}" STREQUAL "ONNXRUNTIME_PATH-NOTFOUND")
+  #       set(onnxruntime_FOUND TRUE)
+  #     endif()
+  #   endif()
+  # endif()
+  # if(NOT onnxruntime_FOUND)
+  #   message(FATAL_ERROR "Cannot find onnxruntime")
+  # endif()
   if(NOT TARGET piper)
     # setup piper
     if(DEFINED PIPER_ROOT)
@@ -440,7 +430,6 @@ function(wasmedge_setup_piper_target target)
         PIPER_LIB_PATH
         NAMES piper libpiper
         PATHS "${PIPER_ROOT}"
-        PATH_SUFFIXES "lib"
         NO_DEFAULT_PATH REQUIRED)
       set_target_properties(
         piper PROPERTIES IMPORTED_LOCATION "${PIPER_LIB_PATH}"
