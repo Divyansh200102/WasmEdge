@@ -7,10 +7,13 @@
 #ifdef WASMEDGE_PLUGIN_WASI_NN_BACKEND_PIPER
 #include "simdjson.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <functional>
 #include <ios>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -22,6 +25,43 @@
 
 namespace WasmEdge::Host::WASINN::Piper {
 #ifdef WASMEDGE_PLUGIN_WASI_NN_BACKEND_PIPER
+
+// Helper function to write WAV header
+void writeWavHeader(int sampleRate, int16_t numChannels, int32_t numSamples,
+                    std::vector<uint8_t> &outputBuffer) {
+  int32_t byteRate = sampleRate * numChannels * sizeof(int16_t);
+  int32_t dataSize = numSamples * numChannels * sizeof(int16_t);
+  int32_t riffSize = 36 + dataSize;
+
+  auto push_u32 = [&](int32_t val) {
+    outputBuffer.push_back(val & 0xFF);
+    outputBuffer.push_back((val >> 8) & 0xFF);
+    outputBuffer.push_back((val >> 16) & 0xFF);
+    outputBuffer.push_back((val >> 24) & 0xFF);
+  };
+  auto push_u16 = [&](int16_t val) {
+    outputBuffer.push_back(val & 0xFF);
+    outputBuffer.push_back((val >> 8) & 0xFF);
+  };
+  auto push_str = [&](const char *str) {
+    for (int i = 0; i < 4; i++)
+      outputBuffer.push_back(str[i]);
+  };
+
+  push_str("RIFF");
+  push_u32(riffSize);
+  push_str("WAVE");
+  push_str("fmt ");
+  push_u32(16);
+  push_u16(1);
+  push_u16(numChannels);
+  push_u32(sampleRate);
+  push_u32(byteRate);
+  push_u16(numChannels * sizeof(int16_t));
+  push_u16(16);
+  push_str("data");
+  push_u32(dataSize);
+}
 
 template <typename T>
 std::tuple<WASINN::ErrNo, bool> getOption(simdjson::dom::object &Object,
@@ -72,19 +112,27 @@ WASINN::ErrNo parseSynthesisConfig(SynthesisConfig &SynthesisConfig,
       }
     }
   }
+
   if (JsonInput) {
-    if (auto Err =
-            getOptionalOption(Object, "speaker_id", SynthesisConfig.SpeakerId);
+    auto s_id = std::optional<int64_t>{};
+    if (auto Err = getOptionalOption(Object, "speaker_id", s_id);
         Err != WASINN::ErrNo::Success) {
       return Err;
+    }
+    if (s_id.has_value()) {
+      SynthesisConfig.SpeakerId = static_cast<int>(s_id.value());
     }
   } else {
-    if (auto Err =
-            getOptionalOption(Object, "speaker", SynthesisConfig.SpeakerId);
-        Err != WASINN::ErrNo::Success) {
-      return Err;
+    auto s_id = std::optional<int64_t>{};
+    // Try "speaker" as an integer ID for legacy compatibility
+    if (auto Err = getOptionalOption(Object, "speaker", s_id);
+        Err == WASINN::ErrNo::Success) {
+      if (s_id.has_value()) {
+        SynthesisConfig.SpeakerId = static_cast<int>(s_id.value());
+      }
     }
   }
+
   if (auto Err = getOptionalOption<float, double>(Object, "noise_scale",
                                                   SynthesisConfig.NoiseScale);
       Err != WASINN::ErrNo::Success) {
@@ -100,42 +148,7 @@ WASINN::ErrNo parseSynthesisConfig(SynthesisConfig &SynthesisConfig,
       Err != WASINN::ErrNo::Success) {
     return Err;
   }
-  if (auto Err = getOptionalOption<float, double>(
-          Object, "sentence_silence", SynthesisConfig.SentenceSilenceSeconds);
-      Err != WASINN::ErrNo::Success) {
-    return Err;
-  }
-  {
-    auto PhonemeSilence = std::optional<simdjson::dom::object>{};
-    if (auto Err = getOptionalOption(Object, "phoneme_silence", PhonemeSilence);
-        Err != WASINN::ErrNo::Success) {
-      return Err;
-    }
-    if (PhonemeSilence) {
-      for (auto [Key, Value] : PhonemeSilence.value()) {
-        auto PhonemeStr = std::string{Key};
-        if (!piper::isSingleCodepoint(PhonemeStr)) {
-          spdlog::error(
-              "[WASI-NN] Piper backend: Phoneme '{}' is not a single codepoint (phoneme_silence)."sv,
-              PhonemeStr);
-          return WASINN::ErrNo::InvalidArgument;
-        }
-        auto Seconds = Value.get_double();
-        if (auto Error = Seconds.error()) {
-          spdlog::error(
-              "[WASI-NN] Piper backend: Failed to get silence seconds for phoneme '{}' as a double: {}"sv,
-              PhonemeStr, simdjson::error_message(Error));
-          return WASINN::ErrNo::InvalidArgument;
-        }
-        if (!SynthesisConfig.PhonemeSilenceSeconds) {
-          SynthesisConfig.PhonemeSilenceSeconds.emplace();
-        }
-        auto Phoneme = piper::getCodepoint(PhonemeStr);
-        SynthesisConfig.PhonemeSilenceSeconds.value()[Phoneme] =
-            Seconds.value();
-      }
-    }
-  }
+
   return WASINN::ErrNo::Success;
 }
 
@@ -161,7 +174,6 @@ WASINN::ErrNo parseRunConfig(RunConfig &RunConfig,
       Err != WASINN::ErrNo::Success) {
     return Err;
   }
-  // Verify model file exists
   if (ModelPath) {
     auto Path = std::filesystem::u8path(ModelPath.value());
     if (!std::filesystem::exists(Path)) {
@@ -187,7 +199,6 @@ WASINN::ErrNo parseRunConfig(RunConfig &RunConfig,
     RunConfig.ModelConfigPath = RunConfig.ModelPath;
     RunConfig.ModelConfigPath += ".json";
   }
-  // Verify model config exists
   if (!std::filesystem::exists(RunConfig.ModelConfigPath)) {
     spdlog::error("[WASI-NN] Piper backend: Model config doesn't exist"sv);
     return WASINN::ErrNo::InvalidArgument;
@@ -226,45 +237,25 @@ WASINN::ErrNo parseRunConfig(RunConfig &RunConfig,
   return WASINN::ErrNo::Success;
 }
 
-void updateSynthesisConfig(SynthesisConfig &SynthesisConfig,
-                           piper::SynthesisConfig &PiperSynthesisConfig,
-                           const bool ForceOverwritePhonemeSilenceSeconds) {
+void updatePiperOptions(const SynthesisConfig &SynthesisConfig,
+                        piper_synthesize_options &Options) {
+  if (SynthesisConfig.SpeakerId) {
+    Options.speaker_id = SynthesisConfig.SpeakerId.value();
+  }
   if (SynthesisConfig.NoiseScale) {
-    PiperSynthesisConfig.noiseScale = SynthesisConfig.NoiseScale.value();
+    Options.noise_scale = SynthesisConfig.NoiseScale.value();
   }
   if (SynthesisConfig.LengthScale) {
-    PiperSynthesisConfig.lengthScale = SynthesisConfig.LengthScale.value();
+    Options.length_scale = SynthesisConfig.LengthScale.value();
   }
   if (SynthesisConfig.NoiseW) {
-    PiperSynthesisConfig.noiseW = SynthesisConfig.NoiseW.value();
-  }
-  if (SynthesisConfig.SentenceSilenceSeconds) {
-    PiperSynthesisConfig.sentenceSilenceSeconds =
-        SynthesisConfig.SentenceSilenceSeconds.value();
-  }
-  if (ForceOverwritePhonemeSilenceSeconds) {
-    PiperSynthesisConfig.phonemeSilenceSeconds =
-        SynthesisConfig.PhonemeSilenceSeconds;
-  } else if (SynthesisConfig.PhonemeSilenceSeconds) {
-    if (!PiperSynthesisConfig.phonemeSilenceSeconds) {
-      // Overwrite
-      PiperSynthesisConfig.phonemeSilenceSeconds =
-          SynthesisConfig.PhonemeSilenceSeconds;
-    } else {
-      // Merge
-      for (const auto &[Phoneme, SilenceSeconds] :
-           *SynthesisConfig.PhonemeSilenceSeconds) {
-        PiperSynthesisConfig.phonemeSilenceSeconds->try_emplace(Phoneme,
-                                                                SilenceSeconds);
-      }
-    }
+    Options.noise_w_scale = SynthesisConfig.NoiseW.value();
   }
 }
 
 Expect<WASINN::ErrNo> load(WASINN::WasiNNEnvironment &Env,
                            Span<const Span<uint8_t>> Builders, WASINN::Device,
                            uint32_t &GraphId) noexcept {
-  // The graph builder length must be 1.
   if (Builders.size() != 1) {
     spdlog::error(
         "[WASI-NN] Piper backend: Wrong GraphBuilder Length {:d}, expect 1"sv,
@@ -272,10 +263,10 @@ Expect<WASINN::ErrNo> load(WASINN::WasiNNEnvironment &Env,
     return WASINN::ErrNo::InvalidArgument;
   }
 
-  // Add a new graph.
   uint32_t GId = Env.newGraph(Backend::Piper);
   auto &GraphRef = Env.NNGraph[GId].get<Graph>();
   GraphRef.Config = std::make_unique<RunConfig>();
+
   auto String = std::string{Builders[0].begin(), Builders[0].end()};
   if (auto Res = parseRunConfig(*GraphRef.Config, String);
       Res != WASINN::ErrNo::Success) {
@@ -284,72 +275,25 @@ Expect<WASINN::ErrNo> load(WASINN::WasiNNEnvironment &Env,
     return Res;
   }
 
-  GraphRef.PiperConfig = std::make_unique<piper::PiperConfig>();
-  GraphRef.Voice = std::make_unique<piper::Voice>();
-  piper::loadVoice(*GraphRef.PiperConfig, GraphRef.Config->ModelPath.string(),
-                   GraphRef.Config->ModelConfigPath.string(), *GraphRef.Voice,
-                   GraphRef.Config->DefaultSynthesisConfig.SpeakerId);
-
-  if (GraphRef.Voice->phonemizeConfig.phonemeType ==
-      piper::PhonemeType::eSpeakPhonemes) {
-    if (!GraphRef.Config->ESpeakDataPath) {
-      spdlog::error(
-          "[WASI-NN] Piper backend: espeak-ng data directory is required for eSpeakPhonemes"sv);
-      Env.deleteGraph(GId);
-      return WASINN::ErrNo::InvalidArgument;
-    }
-    if (!std::filesystem::exists(GraphRef.Config->ESpeakDataPath.value())) {
-      spdlog::error(
-          "[WASI-NN] Piper backend: espeak-ng data directory doesn't exist"sv);
-      Env.deleteGraph(GId);
-      return WASINN::ErrNo::InvalidArgument;
-    }
-    // User provided path
-    GraphRef.PiperConfig->eSpeakDataPath =
-        GraphRef.Config->ESpeakDataPath->string();
-  } else {
-    // Not using eSpeak
-    GraphRef.PiperConfig->useESpeak = false;
+  std::string espeakPath = "";
+  if (GraphRef.Config->ESpeakDataPath) {
+    espeakPath = GraphRef.Config->ESpeakDataPath->string();
   }
 
-  // Enable libtashkeel for Arabic
-  if (GraphRef.Voice->phonemizeConfig.eSpeak.voice == "ar") {
-    if (!GraphRef.Config->TashkeelModelPath) {
-      spdlog::error(
-          "[WASI-NN] Piper backend: libtashkeel ort model is required for Arabic"sv);
-      Env.deleteGraph(GId);
-      return WASINN::ErrNo::InvalidArgument;
-    }
-    if (!std::filesystem::exists(GraphRef.Config->TashkeelModelPath.value())) {
-      spdlog::error(
-          "[WASI-NN] Piper backend: libtashkeel ort model doesn't exist"sv);
-      Env.deleteGraph(GId);
-      return WASINN::ErrNo::InvalidArgument;
-    }
-    GraphRef.PiperConfig->useTashkeel = true;
-    // User provided path
-    GraphRef.PiperConfig->tashkeelModelPath =
-        GraphRef.Config->TashkeelModelPath->string();
+  piper_synthesizer *synth =
+      piper_create(GraphRef.Config->ModelPath.string().c_str(),
+                   GraphRef.Config->ModelConfigPath.string().c_str(),
+                   espeakPath.empty() ? nullptr : espeakPath.c_str());
+
+  if (!synth) {
+    spdlog::error(
+        "[WASI-NN] Piper backend: Failed to create piper synthesizer."sv);
+    Env.deleteGraph(GId);
+    return WASINN::ErrNo::InvalidArgument;
   }
 
-  piper::initialize(*GraphRef.PiperConfig);
+  GraphRef.Synth = std::unique_ptr<piper_synthesizer, PiperDeleter>(synth);
 
-  // Update the default config
-  updateSynthesisConfig(GraphRef.Config->DefaultSynthesisConfig,
-                        GraphRef.Voice->synthesisConfig, false);
-  // Copy back the result
-  GraphRef.Config->DefaultSynthesisConfig.NoiseScale =
-      GraphRef.Voice->synthesisConfig.noiseScale;
-  GraphRef.Config->DefaultSynthesisConfig.LengthScale =
-      GraphRef.Voice->synthesisConfig.lengthScale;
-  GraphRef.Config->DefaultSynthesisConfig.NoiseW =
-      GraphRef.Voice->synthesisConfig.noiseW;
-  GraphRef.Config->DefaultSynthesisConfig.SentenceSilenceSeconds =
-      GraphRef.Voice->synthesisConfig.sentenceSilenceSeconds;
-  GraphRef.Config->DefaultSynthesisConfig.PhonemeSilenceSeconds =
-      GraphRef.Voice->synthesisConfig.phonemeSilenceSeconds;
-
-  // Store the loaded graph.
   GraphId = GId;
   Env.NNGraph[GId].setReady();
   return WASINN::ErrNo::Success;
@@ -358,7 +302,6 @@ Expect<WASINN::ErrNo> load(WASINN::WasiNNEnvironment &Env,
 Expect<WASINN::ErrNo> initExecCtx(WASINN::WasiNNEnvironment &Env,
                                   uint32_t GraphId,
                                   uint32_t &ContextId) noexcept {
-  // Create context.
   ContextId = Env.newContext(GraphId, Env.NNGraph[GraphId]);
   Env.NNContext[ContextId].setReady();
   return WASINN::ErrNo::Success;
@@ -378,9 +321,8 @@ Expect<WASINN::ErrNo> setInput(WASINN::WasiNNEnvironment &Env,
   }
 
   auto &CxtRef = Env.NNContext[ContextId].get<Context>();
-  auto &GraphRef = Env.NNGraph[CxtRef.GraphId].get<Graph>();
-
   auto Line = std::string{Tensor.Tensor.begin(), Tensor.Tensor.end()};
+  auto &GraphRef = Env.NNGraph[CxtRef.GraphId].get<Graph>();
 
   if (GraphRef.Config->JsonInput) {
     simdjson::dom::parser Parser;
@@ -398,7 +340,6 @@ Expect<WASINN::ErrNo> setInput(WASINN::WasiNNEnvironment &Env,
       return WASINN::ErrNo::InvalidArgument;
     }
 
-    // Text is required
     auto Text = std::string_view{};
     if (auto Error = Object["text"].get(Text)) {
       spdlog::error(
@@ -408,30 +349,12 @@ Expect<WASINN::ErrNo> setInput(WASINN::WasiNNEnvironment &Env,
     }
     Line = Text;
 
-    // Parse override config
     auto JsonInputSynthesisConfig = SynthesisConfig{};
     if (auto Err = parseSynthesisConfig(JsonInputSynthesisConfig, Object, true);
         Err != WASINN::ErrNo::Success) {
       return Err;
     }
-    if (!JsonInputSynthesisConfig.SpeakerId) {
-      auto SpeakerName = std::optional<std::string_view>{};
-      if (auto Err = getOptionalOption(Object, "speaker", SpeakerName);
-          Err != WASINN::ErrNo::Success) {
-        return Err;
-      }
-      if (SpeakerName) {
-        // Resolve to id using speaker id map
-        auto Name = std::string{SpeakerName.value()};
-        if (GraphRef.Voice->modelConfig.speakerIdMap &&
-            GraphRef.Voice->modelConfig.speakerIdMap->count(Name) > 0) {
-          JsonInputSynthesisConfig.SpeakerId =
-              GraphRef.Voice->modelConfig.speakerIdMap.value()[Name];
-        } else {
-          spdlog::warn("[WASI-NN] Piper backend: No speaker named: {}"sv, Name);
-        }
-      }
-    }
+
     if (!CxtRef.JsonInputSynthesisConfig) {
       CxtRef.JsonInputSynthesisConfig =
           std::make_unique<std::optional<SynthesisConfig>>();
@@ -458,13 +381,6 @@ Expect<WASINN::ErrNo> getOutput(WASINN::WasiNNEnvironment &Env,
     return WASINN::ErrNo::InvalidArgument;
   }
 
-  if (CxtRef.Output->size() >= std::numeric_limits<uint32_t>::max()) {
-    spdlog::error(
-        "[WASI-NN] Piper backend: Output size {} is greater than std::numeric_limits<uint32_t>::max() {}."sv,
-        CxtRef.Output->size(), std::numeric_limits<uint32_t>::max());
-    return WASINN::ErrNo::InvalidArgument;
-  }
-
   if (CxtRef.Output->size() > OutBuffer.size_bytes()) {
     spdlog::error(
         "[WASI-NN] Piper backend: Output size {} is greater than buffer size {}."sv,
@@ -487,42 +403,73 @@ Expect<WASINN::ErrNo> compute(WASINN::WasiNNEnvironment &Env,
     return WASINN::ErrNo::InvalidArgument;
   }
 
+  piper_synthesize_options options =
+      piper_default_synthesize_options(GraphRef.Synth.get());
+  updatePiperOptions(GraphRef.Config->DefaultSynthesisConfig, options);
+
   auto OutputType = SynthesisConfigOutputType::OUTPUT_WAV;
   if (GraphRef.Config->DefaultSynthesisConfig.OutputType) {
     OutputType = GraphRef.Config->DefaultSynthesisConfig.OutputType.value();
   }
 
-  // Override config
   if (CxtRef.JsonInputSynthesisConfig &&
       CxtRef.JsonInputSynthesisConfig->has_value()) {
-    updateSynthesisConfig(CxtRef.JsonInputSynthesisConfig->value(),
-                          GraphRef.Voice->synthesisConfig, false);
+    updatePiperOptions(CxtRef.JsonInputSynthesisConfig->value(), options);
     if (CxtRef.JsonInputSynthesisConfig->value().OutputType) {
       OutputType = CxtRef.JsonInputSynthesisConfig->value().OutputType.value();
     }
   }
 
-  auto Result = piper::SynthesisResult{};
-  if (OutputType == SynthesisConfigOutputType::OUTPUT_WAV) {
-    auto AudioFile =
-        std::stringstream{std::ios::binary | std::ios::in | std::ios::out};
-    piper::textToWavFile(*GraphRef.PiperConfig, *GraphRef.Voice,
-                         CxtRef.Line.value(), AudioFile, Result);
-    auto String = AudioFile.str();
-    CxtRef.Output = std::vector<uint8_t>{String.begin(), String.end()};
-  } else if (OutputType == SynthesisConfigOutputType::OUTPUT_RAW) {
-    auto AudioBuffer = std::vector<int16_t>{};
-    piper::textToAudio(*GraphRef.PiperConfig, *GraphRef.Voice,
-                       CxtRef.Line.value(), AudioBuffer, Result, nullptr);
-    CxtRef.Output = std::vector<uint8_t>(
-        sizeof(decltype(AudioBuffer)::value_type) * AudioBuffer.size());
-    std::memcpy(CxtRef.Output->data(), AudioBuffer.data(),
-                CxtRef.Output->size());
+  int res = piper_synthesize_start(GraphRef.Synth.get(),
+                                   CxtRef.Line.value().c_str(), &options);
+  if (res != PIPER_OK) {
+    spdlog::error("[WASI-NN] Piper backend: piper_synthesize_start failed."sv);
+    return WASINN::ErrNo::RuntimeError;
   }
 
-  // Restore config (json_input)
-  updateSynthesisConfig(GraphRef.Config->DefaultSynthesisConfig,
-                        GraphRef.Voice->synthesisConfig, true);
+  std::vector<int16_t> audioBuffer;
+  piper_audio_chunk chunk;
+  int sampleRate = 0;
+  const float MAX_WAV_VALUE = 32767.0f;
+
+  while (piper_synthesize_next(GraphRef.Synth.get(), &chunk) != PIPER_DONE) {
+    if (chunk.num_samples == 0)
+      continue;
+    sampleRate = chunk.sample_rate;
+    audioBuffer.reserve(audioBuffer.size() + chunk.num_samples);
+
+    for (size_t i = 0; i < chunk.num_samples; i++) {
+      float sample = chunk.samples[i];
+      if (sample > 1.0f)
+        sample = 1.0f;
+      else if (sample < -1.0f)
+        sample = -1.0f;
+      audioBuffer.push_back(static_cast<int16_t>(sample * MAX_WAV_VALUE));
+    }
+  }
+
+  CxtRef.Output = std::vector<uint8_t>{};
+
+  if (OutputType == SynthesisConfigOutputType::OUTPUT_WAV) {
+    if (sampleRate == 0)
+      sampleRate = 22050;
+
+    size_t totalSize = 44 + (audioBuffer.size() * sizeof(int16_t));
+    CxtRef.Output->reserve(totalSize);
+
+    writeWavHeader(sampleRate, 1, audioBuffer.size(), *CxtRef.Output);
+
+    const uint8_t *rawData =
+        reinterpret_cast<const uint8_t *>(audioBuffer.data());
+    CxtRef.Output->insert(CxtRef.Output->end(), rawData,
+                          rawData + (audioBuffer.size() * sizeof(int16_t)));
+
+  } else {
+    size_t totalSize = audioBuffer.size() * sizeof(int16_t);
+    CxtRef.Output->resize(totalSize);
+    std::memcpy(CxtRef.Output->data(), audioBuffer.data(), totalSize);
+  }
+
   return WASINN::ErrNo::Success;
 }
 #else

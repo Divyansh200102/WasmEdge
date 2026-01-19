@@ -3,14 +3,15 @@
 
 #pragma once
 
+#include "plugin/plugin.h"
 #include "wasinntypes.h"
 
-#include "plugin/plugin.h"
-
 #ifdef WASMEDGE_PLUGIN_WASI_NN_BACKEND_PIPER
-#include <piper.hpp>
+// Use the new C API header
+#include <piper.h>
 
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,14 +24,15 @@ struct WasiNNEnvironment;
 
 namespace WasmEdge::Host::WASINN::Piper {
 #ifdef WASMEDGE_PLUGIN_WASI_NN_BACKEND_PIPER
+
 enum class SynthesisConfigOutputType { OUTPUT_WAV, OUTPUT_RAW };
+
 struct SynthesisConfig {
-  // Type of output to produce.
-  // Default is a WAV file.
+  // Type of output to produce. Default is a WAV file.
   std::optional<SynthesisConfigOutputType> OutputType;
 
   // Numerical id of the default speaker (multi-speaker voices)
-  std::optional<piper::SpeakerId> SpeakerId;
+  std::optional<int> SpeakerId;
 
   // Amount of noise to add during audio generation
   std::optional<float> NoiseScale;
@@ -41,12 +43,10 @@ struct SynthesisConfig {
   // Variation in phoneme lengths
   std::optional<float> NoiseW;
 
-  // Seconds of silence to add after each sentence
-  std::optional<float> SentenceSilenceSeconds;
-
-  // Seconds of extra silence to insert after a single phoneme
-  std::optional<std::map<piper::Phoneme, float>> PhonemeSilenceSeconds;
+  // NOTE: Phoneme/Sentence silence configuration is not exposed
+  // in the new upstream C API (piper.h) and has been removed.
 };
+
 struct RunConfig {
   // Path to .onnx voice file
   std::filesystem::path ModelPath;
@@ -58,25 +58,28 @@ struct RunConfig {
   std::optional<std::filesystem::path> ESpeakDataPath;
 
   // Path to libtashkeel ort model
-  // https://github.com/mush42/libtashkeel/
   std::optional<std::filesystem::path> TashkeelModelPath;
 
-  // input is JSON with format:
-  // {
-  //   "text": str,               (required)
-  //   "speaker_id": int,         (optional)
-  //   "speaker": str,            (optional)
-  // }
-  // including options in SynthesisConfig
+  // input is JSON
   bool JsonInput = false;
 
   SynthesisConfig DefaultSynthesisConfig;
 };
+
+// Custom deleter for the piper_synthesizer
+struct PiperDeleter {
+  void operator()(piper_synthesizer *p) const {
+    if (p)
+      piper_free(p);
+  }
+};
+
 struct Graph {
   std::unique_ptr<RunConfig> Config;
-  std::unique_ptr<piper::PiperConfig> PiperConfig;
-  std::unique_ptr<piper::Voice> Voice;
+  // Replaced internal C++ classes with the C-API synthesizer handle
+  std::unique_ptr<piper_synthesizer, PiperDeleter> Synth;
 };
+
 struct Context {
   Context(uint32_t GId, Graph &) noexcept : GraphId(GId) {}
   uint32_t GraphId;
