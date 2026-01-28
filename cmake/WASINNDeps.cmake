@@ -432,7 +432,7 @@ function(wasmedge_setup_piper_target target)
         GIT_TAG 32b95f8c1f0dc0ce27a6acd1143de331f61af777
         UPDATE_DISCONNECTED TRUE
         SOURCE_SUBDIR libpiper
-        PATCH_COMMAND "${GIT_CMD}" "apply" "${CMAKE_SOURCE_DIR}/plugins/wasi_nn/libpiper.patch"
+        PATCH_COMMAND "${GIT_CMD}" "apply" "${CMAKE_SOURCE_DIR}/utils/wasi-nn/libpiper.patch"
       )
       set(BUILD_SHARED_LIBS OFF CACHE INTERNAL "Piper not build shared")
       set(BUILD_TESTING OFF CACHE INTERNAL "Piper not build tests")
