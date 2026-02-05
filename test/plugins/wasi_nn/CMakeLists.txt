@@ -113,6 +113,11 @@ foreach(BACKEND ${WASMEDGE_PLUGIN_WASI_NN_BACKEND})
     else()
         message(WARNING "Could not find espeak-ng-data at ${ESPEAK_SOURCE_DIR}")
     endif()
+    target_link_libraries(wasiNNTests
+      PRIVATE
+      onnxruntime
+      espeak-ng
+    )
   elseif(BACKEND STREQUAL "whisper")
     message( STATUS "Download ML artifacts to ${CMAKE_CURRENT_BINARY_DIR}/wasinn_whisper_fixtures")
     download(

@@ -86,6 +86,13 @@ foreach(BACKEND ${WASMEDGE_PLUGIN_WASI_NN_BACKEND})
       GGML/utils.cpp
     )
   endif()
+  if(BACKEND STREQUAL "piper")
+    target_link_libraries(wasmedgePluginWasiNN
+      PRIVATE
+      onnxruntime
+      espeak-ng
+    )
+  endif()
 endforeach()
 
 target_compile_options(wasmedgePluginWasiNN
