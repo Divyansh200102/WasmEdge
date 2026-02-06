@@ -63,6 +63,12 @@ jobs:
       - name: Ensure git safe directory
         run: |
           git config --global --add safe.directory $(pwd)
+      - name: Verify Piper Dependencies (Debug)
+        if: ${{ contains(matrix.plugin, 'piper') }}
+        run: |
+          echo "Checking for rescued libraries..."
+          ls -l /usr/local/lib/libespeak-ng.a || echo "❌ LibEspeak NOT FOUND"
+          ls -l /usr/local/lib/libucd.a || echo "❌ LibUCD NOT FOUND"
       - name: Build ${{ matrix.plugin }}
         shell: bash
         run: |
