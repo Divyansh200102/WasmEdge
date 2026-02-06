@@ -87,10 +87,28 @@ foreach(BACKEND ${WASMEDGE_PLUGIN_WASI_NN_BACKEND})
     )
   endif()
   if(BACKEND STREQUAL "piper")
+    find_library(ESPEAK_NG_LIB 
+        NAMES espeak-ng libespeak-ng 
+        PATHS /usr/local/lib /usr/local/lib64
+        NO_DEFAULT_PATH
+    )
+    if (NOT ESPEAK_NG_LIB)
+        find_library(ESPEAK_NG_LIB NAMES espeak-ng libespeak-ng)
+    endif()
+    find_library(UCD_LIB 
+        NAMES ucd libucd 
+        PATHS /usr/local/lib /usr/local/lib64
+        NO_DEFAULT_PATH
+    )
+    if (NOT UCD_LIB)
+        find_library(UCD_LIB NAMES ucd libucd)
+    endif()
+
     target_link_libraries(wasmedgePluginWasiNN
       PRIVATE
       onnxruntime
-      espeak-ng
+      ${ESPEAK_NG_LIB}
+      ${UCD_LIB}
     )
   endif()
 endforeach()

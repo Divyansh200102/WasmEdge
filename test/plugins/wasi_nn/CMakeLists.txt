@@ -113,10 +113,28 @@ foreach(BACKEND ${WASMEDGE_PLUGIN_WASI_NN_BACKEND})
     else()
         message(WARNING "Could not find espeak-ng-data at ${ESPEAK_SOURCE_DIR}")
     endif()
+    find_library(ESPEAK_NG_LIB 
+        NAMES espeak-ng libespeak-ng 
+        PATHS /usr/local/lib /usr/local/lib64
+        NO_DEFAULT_PATH
+    )
+    if (NOT ESPEAK_NG_LIB)
+        find_library(ESPEAK_NG_LIB NAMES espeak-ng libespeak-ng)
+    endif()
+    find_library(UCD_LIB 
+        NAMES ucd libucd 
+        PATHS /usr/local/lib /usr/local/lib64
+        NO_DEFAULT_PATH
+    )
+    if (NOT UCD_LIB)
+        find_library(UCD_LIB NAMES ucd libucd)
+    endif()
+
     target_link_libraries(wasiNNTests
       PRIVATE
       onnxruntime
-      espeak-ng
+      ${ESPEAK_NG_LIB}
+      ${UCD_LIB}
     )
   elseif(BACKEND STREQUAL "whisper")
     message( STATUS "Download ML artifacts to ${CMAKE_CURRENT_BINARY_DIR}/wasinn_whisper_fixtures")
